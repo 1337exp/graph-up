@@ -4,15 +4,16 @@ import { typesCompatible } from '@/graph/validate';
 /** Категория — часть id до «/»: `math/add` → `math`. */
 export const categoryOf = (def: AnyNodeDef): string => (def.id.includes('/') ? def.id.split('/')[0]! : 'other');
 
-export const categoryTitle = (category: string): string => category.charAt(0).toUpperCase() + category.slice(1);
-
-/** Ноды, подходящие под запрос (все слова должны встретиться в названии или id), по категориям и названиям. */
-export function filterNodes(defs: AnyNodeDef[], query: string): AnyNodeDef[] {
+/**
+ * Ноды, подходящие под запрос (все слова должны встретиться в названии или id), по категориям и названиям.
+ * `extraText` добавляет к тексту поиска переводы, чтобы искать можно было на любом языке.
+ */
+export function filterNodes(defs: AnyNodeDef[], query: string, extraText: (def: AnyNodeDef) => string = () => ''): AnyNodeDef[] {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
 
     return defs
         .filter((def) => {
-            const haystack = `${def.title} ${def.id}`.toLowerCase();
+            const haystack = `${def.title} ${def.id} ${extraText(def)}`.toLowerCase();
             return words.every((w) => haystack.includes(w));
         })
         .sort((a, b) => categoryOf(a).localeCompare(categoryOf(b)) || a.title.localeCompare(b.title));

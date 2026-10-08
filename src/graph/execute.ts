@@ -2,13 +2,15 @@ import { isPure } from './define';
 import type { Registry } from './registry';
 import type { AnyNodeDef, Graph, NodeInstance } from './types';
 
-export type ExecutionErrorKind = 'error' | 'limit' | 'aborted';
+/** Причина остановки. По ней UI подбирает перевод; `message` — английский текст для разработчика. */
+export type ExecutionErrorKind = 'limit' | 'aborted' | 'nodeNotFound' | 'dataCycle' | 'nodeError';
 
 export class ExecutionError extends Error {
     constructor(
         message: string,
         readonly nodeId?: string,
-        readonly kind: ExecutionErrorKind = 'error',
+        readonly kind: ExecutionErrorKind = 'nodeError',
+        readonly params: Record<string, string | number> = {},
     ) {
         super(message);
         this.name = 'ExecutionError';
@@ -60,7 +62,7 @@ export async function execute(
 
     const nodeOf = (id: string): NodeInstance => {
         const node = graph.nodes[id];
-        if (!node) throw new ExecutionError(`Нода "${id}" не найдена`, id);
+        if (!node) throw new ExecutionError(`Node "${id}" not found`, id, 'nodeNotFound', { id });
         return node;
     };
 
@@ -97,7 +99,7 @@ export async function execute(
         const cached = pureCache.get(node.id);
         if (cached) return cached;
 
-        if (evaluating.has(node.id)) throw new ExecutionError('Цикл по данным', node.id);
+        if (evaluating.has(node.id)) throw new ExecutionError('Data cycle', node.id, 'dataCycle');
         evaluating.add(node.id);
 
         try {
@@ -106,7 +108,7 @@ export async function execute(
             pureCache.set(node.id, out);
             return out;
         } catch (e) {
-            throw e instanceof ExecutionError ? e : new ExecutionError(errorMessage(e), node.id);
+            throw wrapError(e, node.id);
         } finally {
             evaluating.delete(node.id);
         }
@@ -116,13 +118,13 @@ export async function execute(
     let steps = 0;
 
     while (current !== null) {
-        if (signal?.aborted) throw new ExecutionError('Остановлено', current, 'aborted');
-        if (++steps > maxSteps) throw new ExecutionError(`Превышен лимит шагов (${maxSteps})`, current, 'limit');
+        if (signal?.aborted) throw new ExecutionError('Aborted', current, 'aborted');
+        if (++steps > maxSteps) throw new ExecutionError(`Step limit exceeded (${maxSteps})`, current, 'limit', { maxSteps });
 
         onStep?.(current);
         if (stepDelay > 0) await new Promise<void>((resolve) => setTimeout(resolve, stepDelay));
         else if (steps % YIELD_EVERY === 0) await macrotask();
-        if (signal?.aborted) throw new ExecutionError('Остановлено', current, 'aborted');
+        if (signal?.aborted) throw new ExecutionError('Aborted', current, 'aborted');
 
         const node = nodeOf(current);
         const def = registry.get(node.type);
@@ -134,7 +136,7 @@ export async function execute(
             outputs[node.id] = (result.outputs ?? {}) as Record<string, unknown>;
             nextPin = result.next;
         } catch (e) {
-            throw e instanceof ExecutionError ? e : new ExecutionError(errorMessage(e), node.id);
+            throw wrapError(e, node.id);
         }
 
         if (nextPin === undefined) {
@@ -149,6 +151,8 @@ export async function execute(
     return { steps, logs, outputs };
 }
 
-function errorMessage(e: unknown): string {
-    return e instanceof Error ? e.message : String(e);
+function wrapError(e: unknown, nodeId: string): ExecutionError {
+    if (e instanceof ExecutionError) return e;
+    const message = e instanceof Error ? e.message : String(e);
+    return new ExecutionError(message, nodeId, 'nodeError', { message });
 }

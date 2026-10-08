@@ -1,8 +1,15 @@
 <script lang="ts" setup>
 import { nextTick, ref, watch } from 'vue';
+import { isLocaleCode, LOCALE_CODES, LOCALE_NAMES, setLocale, useI18n } from '@/i18n';
 import { SLOW_STEP_MS, useRun } from '../run';
 
 const run = useRun();
+const { t, locale } = useI18n();
+
+function onLocaleChange(e: Event) {
+    const value = (e.target as HTMLSelectElement).value;
+    if (isLocaleCode(value)) setLocale(value);
+}
 const logEl = ref<HTMLElement | null>(null);
 
 // Прокручиваем лог вниз при новых строках.
@@ -17,23 +24,29 @@ watch(
 
 <template>
     <div class="toolbar">
-        <button v-if="!run.running" class="btn run" @click="run.run()">▶ Run</button>
-        <button v-else class="btn stop" @click="run.stop()">■ Stop</button>
+        <button v-if="!run.running" class="btn run" @click="run.run()">▶ {{ t('run.run') }}</button>
+        <button v-else class="btn stop" @click="run.stop()">■ {{ t('run.stop') }}</button>
 
         <label class="slow">
             <input v-model="run.slow" type="checkbox" />
-            Медленно ({{ SLOW_STEP_MS }} мс/шаг)
+            {{ t('run.slow', [SLOW_STEP_MS]) }}
         </label>
+
+        <select class="lang" :value="locale" :aria-label="t('ui.language')" @change="onLocaleChange">
+            <option v-for="code in LOCALE_CODES" :key="code" :value="code">{{ LOCALE_NAMES[code] }}</option>
+        </select>
     </div>
 
     <div class="log">
         <header>
-            <span>Лог</span>
-            <button class="clear" @click="run.clearLog()">Очистить</button>
+            <span>{{ t('log.title') }}</span>
+            <button class="clear" @click="run.clearLog()">{{ t('log.clear') }}</button>
         </header>
         <div ref="logEl" class="lines">
-            <div v-if="!run.lines.length" class="empty">Нажми Run — результаты появятся здесь</div>
-            <div v-for="(line, i) in run.lines" :key="i" class="line" :class="line.kind">{{ line.text }}</div>
+            <div v-if="!run.lines.length" class="empty">{{ t('log.empty') }}</div>
+            <div v-for="(line, i) in run.lines" :key="i" class="line" :class="line.kind">
+                {{ line.kind === 'log' ? line.text : t(line.key, line.args) }}
+            </div>
         </div>
     </div>
 </template>
@@ -66,6 +79,15 @@ watch(
 
 .btn.run { background: #2e7d32; }
 .btn.stop { background: #c62828; }
+
+.lang {
+    padding: 2px 4px;
+    border: 1px solid #333;
+    border-radius: 4px;
+    background: #101214;
+    color: inherit;
+    font: inherit;
+}
 
 .slow {
     display: flex;

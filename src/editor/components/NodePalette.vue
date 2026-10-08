@@ -1,9 +1,11 @@
 <script lang="ts" setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { categoryTitle, filterNodes, groupByCategory } from '../palette';
+import { useI18n } from '@/i18n';
+import { categoryOf, filterNodes, groupByCategory } from '../palette';
 import { useEditor } from '../store';
 
 const editor = useEditor();
+const { t, nodeTitle, categoryTitle } = useI18n();
 
 const WIDTH = 280;
 const HEIGHT = 340;
@@ -14,7 +16,7 @@ const input = ref<HTMLInputElement | null>(null);
 const listEl = ref<HTMLElement | null>(null);
 
 const flat = computed(() =>
-    filterNodes(editor.registry.all(), query.value).filter((def) => editor.fitsPaletteOrigin(def.id)),
+    filterNodes(editor.registry.all(), query.value, (def) => `${nodeTitle(def)} ${categoryTitle(categoryOf(def))}`).filter((def) => editor.fitsPaletteOrigin(def.id)),
 );
 const groups = computed(() => groupByCategory(flat.value));
 
@@ -79,12 +81,12 @@ onMounted(() => input.value?.focus());
         @keydown="onKeyDown"
     >
         <div class="head">
-            {{ editor.palette.origin ? 'Совместимые ноды' : 'Добавить ноду' }}
+            {{ editor.palette.origin ? t('palette.compatible') : t('palette.add') }}
         </div>
-        <input ref="input" v-model="query" class="search" placeholder="Поиск…" spellcheck="false" />
+        <input ref="input" v-model="query" class="search" :placeholder="t('palette.search')" spellcheck="false" />
 
         <div ref="listEl" class="list">
-            <div v-if="!flat.length" class="empty">Ничего не найдено</div>
+            <div v-if="!flat.length" class="empty">{{ t('palette.empty') }}</div>
 
             <template v-for="group in groups" :key="group.category">
                 <div class="category">{{ categoryTitle(group.category) }}</div>
@@ -96,7 +98,7 @@ onMounted(() => input.value?.focus());
                     @mousemove="active = flat.indexOf(def)"
                     @click="editor.createFromPalette(def.id)"
                 >
-                    {{ def.title }}
+                    {{ nodeTitle(def) }}
                 </button>
             </template>
         </div>

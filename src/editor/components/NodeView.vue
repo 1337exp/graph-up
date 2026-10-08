@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import { computed, onMounted, onUnmounted, onUpdated, ref } from 'vue';
 import type { DataPinDef, NodeInstance, PinDef } from '@/graph/types';
+import { useI18n } from '@/i18n';
 import { pinColor } from '../colors';
 import { useRun } from '../run';
 import { useEditor } from '../store';
@@ -9,12 +10,13 @@ const props = defineProps<{ node: NodeInstance; selected: boolean }>();
 
 const editor = useEditor();
 const run = useRun();
+const { nodeTitle, pinLabel } = useI18n();
 const def = computed(() => editor.registry.get(props.node.type));
 
 const inputs = computed(() => Object.entries(def.value.inputs));
 const outputs = computed(() => Object.entries(def.value.outputs));
 
-const label = (name: string, pin: PinDef) => pin.label ?? name;
+const label = (name: string, pin: PinDef) => pinLabel(def.value.id, name, pin.label);
 
 //--------------------------------------------------
 // Позиции пинов нужны слою связей: меряем по DOM и храним в мировых единицах.
@@ -72,7 +74,7 @@ function onInput(name: string, pin: DataPinDef, e: Event) {
         :data-node-id="node.id"
         :style="{ transform: `translate(${node.x}px, ${node.y}px)` }"
     >
-        <header class="title">{{ def.title }}</header>
+        <header class="title">{{ nodeTitle(def) }}</header>
 
         <div class="body">
             <div class="column inputs">
