@@ -10,6 +10,25 @@ export default {
         language: 'Language',
     },
 
+    file: {
+        new: 'New',
+        open: 'Open',
+        save: 'Save',
+        newGraph: 'New graph created (undoable)',
+        loaded: 'Opened {0} node(s) (undoable)',
+        loadedWithDropped: 'Opened {0} node(s). Invalid links dropped: {1}',
+        error: {
+            invalidJson: 'Could not read the file: not JSON',
+            notGraphFile: 'This is not a graph file',
+            newerVersion: 'The file was made by a newer version (format {0})',
+            invalidStructure: 'The file is corrupted: {0}',
+            unknownNode: 'The file contains an unknown node: {0}',
+            tooLarge: 'The file is too large',
+            restoreFailed: 'Could not restore the autosave, showing the example',
+            saveFailed: 'Autosave is unavailable: the browser refuses to store data',
+        },
+    },
+
     history: {
         undo: 'Undo (Ctrl+Z)',
         redo: 'Redo (Ctrl+Y)',

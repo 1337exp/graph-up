@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import { nextTick, ref, watch } from 'vue';
+import { downloadText, FILE_NAME, MAX_FILE_BYTES } from '../file';
 import { isLocaleCode, LOCALE_CODES, LOCALE_NAMES, setLocale, useI18n } from '@/i18n';
 import { SLOW_STEP_MS, useRun } from '../run';
 import { useEditor } from '../store';
@@ -13,6 +14,17 @@ function onLocaleChange(e: Event) {
     if (isLocaleCode(value)) setLocale(value);
 }
 const logEl = ref<HTMLElement | null>(null);
+const fileInput = ref<HTMLInputElement | null>(null);
+
+async function onFile(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ''; // чтобы тот же файл можно было открыть повторно
+    if (!file) return;
+
+    if (file.size > MAX_FILE_BYTES) editor.showNotice('error', 'file.error.tooLarge');
+    else editor.importText(await file.text());
+}
 
 // Прокручиваем лог вниз при новых строках.
 watch(
@@ -26,6 +38,15 @@ watch(
 
 <template>
     <div class="toolbar">
+        <div class="file">
+            <button class="text" :title="t('file.new')" @click="editor.newGraph()">{{ t('file.new') }}</button>
+            <button class="text" :title="t('file.open')" @click="fileInput?.click()">{{ t('file.open') }}</button>
+            <button class="text" :title="t('file.save')" @click="downloadText(FILE_NAME, editor.exportText())">
+                {{ t('file.save') }}
+            </button>
+            <input ref="fileInput" type="file" accept=".json,application/json" hidden @change="onFile" />
+        </div>
+
         <div class="history">
             <button class="icon" :disabled="!editor.canUndo" :title="t('history.undo')" @click="editor.undo()">↶</button>
             <button class="icon" :disabled="!editor.canRedo" :title="t('history.redo')" @click="editor.redo()">↷</button>
@@ -42,6 +63,10 @@ watch(
         <select class="lang" :value="locale" :aria-label="t('ui.language')" @change="onLocaleChange">
             <option v-for="code in LOCALE_CODES" :key="code" :value="code">{{ LOCALE_NAMES[code] }}</option>
         </select>
+    </div>
+
+    <div v-if="editor.notice" class="notice" :class="editor.notice.kind">
+        {{ t(editor.notice.key, editor.notice.args) }}
     </div>
 
     <div class="log-panel">
@@ -86,6 +111,39 @@ watch(
 
 .btn.run { background: #2e7d32; }
 .btn.stop { background: #c62828; }
+
+.file {
+    display: flex;
+    gap: 4px;
+}
+
+.text {
+    padding: 2px 8px;
+    border: 1px solid #333;
+    border-radius: 4px;
+    background: #2c3850;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.notice {
+    position: absolute;
+    top: 58px;
+    left: 12px;
+    max-width: 420px;
+    padding: 5px 10px;
+    border: 1px solid #2a2d33;
+    border-radius: 6px;
+    background: rgba(24, 26, 30, 0.95);
+    color: #d6d9de;
+    font-size: 12px;
+}
+
+.notice.error {
+    border-color: #7a2e2e;
+    color: #ff9b9b;
+}
 
 .history {
     display: flex;

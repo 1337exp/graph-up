@@ -4,15 +4,28 @@ import type { ConcreteType } from '@/graph/coerce';
 import { coerce } from '@/graph/coerce';
 import { addNode, connect, createGraph, disconnect, removeNode } from '@/graph/graph';
 import { pinOf } from '@/graph/pins';
-import type { PinRef } from '@/graph/types';
+import { parse, serialize, type LoadError, type SavedView } from '@/graph/serialize';
+import type { Graph, PinRef } from '@/graph/types';
+import type { MessageArgs, MessageKey } from '@/i18n';
 import * as vars from '@/graph/variables';
 import { canConnect } from '@/graph/validate';
 import { createDefaultRegistry } from '@/nodes';
-import { createCamera, screenToWorld, type Camera } from './camera';
+import { createCamera, MAX_ZOOM, MIN_ZOOM, screenToWorld, type Camera } from './camera';
 import { History } from './history';
+import { backupBroken, readSaved, writeSaved } from './persistence';
 import { findCompatiblePin } from './palette';
 
 export type PinDir = 'in' | 'out';
+
+/** Короткое сообщение пользователю (результат открытия файла и т.п.). Хранит ключ перевода. */
+export interface Notice {
+    kind: 'info' | 'error';
+    key: MessageKey;
+    args?: MessageArgs;
+}
+
+const NOTICE_MS = 5000;
+const AUTOSAVE_DELAY_MS = 400;
 
 export interface PinTarget {
     ref: PinRef;
@@ -259,6 +272,125 @@ export const useEditor = defineStore('editor', () => {
     }
 
     //---]>
+    // уведомления, файлы, автосохранение
+
+    const notice = ref<Notice | null>(null);
+    let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+
+    function showNotice(kind: Notice['kind'], key: MessageKey, args?: MessageArgs) {
+        notice.value = { kind, key, args };
+        clearTimeout(noticeTimer);
+        noticeTimer = setTimeout(() => (notice.value = null), NOTICE_MS);
+    }
+
+    let autosaveOn = false;
+    let saveTimer: ReturnType<typeof setTimeout> | undefined;
+    let saveFailedShown = false;
+
+    /** Записывает граф и положение камеры в localStorage. */
+    function flushSave() {
+        clearTimeout(saveTimer);
+        saveTimer = undefined;
+        if (!autosaveOn) return;
+
+        if (writeSaved(serialize(graph.value, camera.value, false))) {
+            saveFailedShown = false;
+        } else if (!saveFailedShown) {
+            saveFailedShown = true; // сообщаем один раз, а не при каждой правке
+            showNotice('error', 'file.error.saveFailed');
+        }
+    }
+
+    function scheduleSave() {
+        if (!autosaveOn) return;
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(flushSave, AUTOSAVE_DELAY_MS);
+    }
+
+    /**
+     * Включает автосохранение. Выключено по умолчанию (в тестах и до восстановления граф не пишется).
+     * Правки сохраняются с небольшой задержкой, а при скрытии вкладки и закрытии — сразу.
+     * Возвращает функцию, которая всё отключает.
+     */
+    function startAutosave(): () => void {
+        autosaveOn = true;
+        const onHide = () => {
+            if (document.visibilityState === 'hidden') flushSave();
+        };
+        window.addEventListener('pagehide', flushSave);
+        document.addEventListener('visibilitychange', onHide);
+
+        return () => {
+            autosaveOn = false;
+            clearTimeout(saveTimer);
+            window.removeEventListener('pagehide', flushSave);
+            document.removeEventListener('visibilitychange', onHide);
+        };
+    }
+
+    /** Подменяет граф целиком. Без `resetHistory` это обычная правка: её можно отменить. */
+    function loadGraph(next: Graph, view?: SavedView, resetHistory = false) {
+        graph.value = next;
+        selection.clear();
+        selectedConnection.value = null;
+        pending.value = null;
+        palette.value = null;
+        if (view) camera.value = { x: view.x, y: view.y, z: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.z)) };
+
+        if (resetHistory) {
+            history.reset(snapshot());
+            syncHistory();
+        } else {
+            commit();
+        }
+    }
+
+    /** Текст файла для скачивания. */
+    const exportText = () => serialize(graph.value, camera.value);
+
+    function errorNotice(error: LoadError): Notice {
+        const detail = error.detail === undefined ? undefined : [error.detail];
+        return { kind: 'error', key: `file.error.${error.code}`, args: detail };
+    }
+
+    /** Открывает граф из текста файла. При ошибке граф не меняется. Результат показывается уведомлением. */
+    function importText(text: string): LoadError | null {
+        const result = parse(text, registry);
+        if (!result.ok) {
+            const n = errorNotice(result.error);
+            showNotice(n.kind, n.key, n.args);
+            return result.error;
+        }
+
+        loadGraph(result.graph, result.view);
+        const nodes = Object.keys(result.graph.nodes).length;
+        if (result.droppedConnections > 0) showNotice('error', 'file.loadedWithDropped', [nodes, result.droppedConnections]);
+        else showNotice('info', 'file.loaded', [nodes]);
+        return null;
+    }
+
+    function newGraph() {
+        loadGraph(createGraph(), { x: 0, y: 0, z: 1 });
+        showNotice('info', 'file.newGraph');
+    }
+
+    /** При старте приложения: поднимает граф из автосохранения. Возвращает true, если было что поднимать. */
+    function restoreSaved(): boolean {
+        const text = readSaved();
+        if (text === null) return false;
+
+        const result = parse(text, registry);
+        if (!result.ok) {
+            backupBroken(text);
+            showNotice('error', 'file.error.restoreFailed');
+            return false;
+        }
+
+        loadGraph(result.graph, result.view, true);
+        return true;
+    }
+
+    //---]>
     // undo/redo
 
     const snapshot = () => JSON.stringify(graph.value);
@@ -269,6 +401,7 @@ export const useEditor = defineStore('editor', () => {
     function syncHistory() {
         canUndo.value = history.canUndo;
         canRedo.value = history.canRedo;
+        scheduleSave(); // граф изменился (правка, undo или redo) — автосохранение подхватит
     }
 
     /** Запоминает текущий граф как шаг истории. Одинаковый `key` подряд склеивает правки (набор числа в поле). */
@@ -348,6 +481,15 @@ export const useEditor = defineStore('editor', () => {
     }
 
     return {
+        notice,
+        showNotice,
+        exportText,
+        importText,
+        newGraph,
+        loadGraph,
+        restoreSaved,
+        startAutosave,
+        flushSave,
         viewport,
         addVariable: recorded(addVariable),
         removeVariable: recorded(removeVariable),
