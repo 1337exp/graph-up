@@ -1,0 +1,14 @@
+node_modules
+dist
+*.local
+.DS_Store
+
+# старый код: нужен только как справка при переносе
+old-code
+
+# снимки демо-сервера
+examples/server/data
+
+# IDE и локальные настройки
+.idea
+.claude
