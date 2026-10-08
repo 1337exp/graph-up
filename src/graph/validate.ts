@@ -5,7 +5,7 @@ export type CheckResult = { ok: true } | { ok: false; reason: string };
 
 const fail = (reason: string): CheckResult => ({ ok: false, reason });
 
-function typesCompatible(out: PinDef, inp: PinDef): boolean {
+export function typesCompatible(out: PinDef, inp: PinDef): boolean {
     if (out.kind === 'exec' || inp.kind === 'exec') return out.kind === inp.kind;
     return out.type === 'any' || inp.type === 'any' || out.type === inp.type;
 }

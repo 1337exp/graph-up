@@ -5,6 +5,7 @@ import type { PinRef } from '@/graph/types';
 import { canConnect } from '@/graph/validate';
 import { createDefaultRegistry } from '@/nodes';
 import { createCamera, type Camera } from './camera';
+import { findCompatiblePin } from './palette';
 
 export type PinDir = 'in' | 'out';
 
@@ -21,6 +22,16 @@ export interface PendingConnection {
     cursor: [number, number];
     /** Пин под курсором допустим (true), недопустим (false) или под курсором нет пина (null). */
     valid: boolean | null;
+}
+
+/** Открытая палитра нод. */
+export interface PaletteState {
+    /** Позиция окна относительно холста, px. */
+    screen: [number, number];
+    /** Куда поставить новую ноду, мировые координаты. */
+    world: [number, number];
+    /** Если палитра открыта протягиванием связи — пин, от которого тянули. */
+    origin: PinTarget | null;
 }
 
 type PinOffsets = Record<string, [number, number]>;
@@ -50,6 +61,7 @@ export const useEditor = defineStore('editor', () => {
     const selection = reactive(new Set<string>());
     const selectedConnection = ref<string | null>(null);
     const pending = ref<PendingConnection | null>(null);
+    const palette = ref<PaletteState | null>(null);
 
     /** Позиции пинов относительно левого верхнего угла ноды (в мировых единицах), измеряются по DOM. */
     const pinOffsets = reactive<Record<string, PinOffsets>>({});
@@ -177,7 +189,56 @@ export const useEditor = defineStore('editor', () => {
         return true;
     }
 
+    //---]>
+    // палитра нод
+
+    const pinDefOf = (t: PinTarget) =>
+        registry.get(graph.value.nodes[t.ref.node]!.type)[t.dir === 'out' ? 'outputs' : 'inputs'][t.ref.pin]!;
+
+    function openPalette(screen: [number, number], world: [number, number], origin: PinTarget | null = null) {
+        palette.value = { screen, world, origin };
+    }
+
+    function closePalette() {
+        palette.value = null;
+    }
+
+    /** Нода типа `type` подходит под origin палитры (если он есть). */
+    function fitsPaletteOrigin(type: string): boolean {
+        const origin = palette.value?.origin;
+        return !origin || findCompatiblePin(pinDefOf(origin), origin.dir, registry.get(type)) !== null;
+    }
+
+    /** Создаёт ноду в позиции палитры; если палитру открыли связью, подключает новую ноду к её пину. */
+    function createFromPalette(type: string) {
+        const p = palette.value;
+        if (!p) return;
+
+        const def = registry.get(type);
+        // Нода, у которой тянули вход, должна оказаться левее курсора.
+        const x = p.origin?.dir === 'in' ? p.world[0] - 180 : p.world[0];
+        const node = addNode(graph.value, registry, type, { x, y: p.world[1] });
+
+        if (p.origin) {
+            const pin = findCompatiblePin(pinDefOf(p.origin), p.origin.dir, def);
+            if (pin) {
+                const target = { node: node.id, pin };
+                if (p.origin.dir === 'out') connect(graph.value, registry, p.origin.ref, target);
+                else connect(graph.value, registry, target, p.origin.ref);
+            }
+        }
+
+        setSelection([node.id]);
+        selectedConnection.value = null;
+        palette.value = null;
+    }
+
     return {
+        palette,
+        openPalette,
+        closePalette,
+        fitsPaletteOrigin,
+        createFromPalette,
         registry,
         graph,
         camera,

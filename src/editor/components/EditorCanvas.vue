@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { panBy, screenToWorld, zoomAt } from '../camera';
 import { useEditor, type PinTarget } from '../store';
 import ConnectionsLayer from './ConnectionsLayer.vue';
@@ -16,6 +16,9 @@ let mode: Mode = 'idle';
 let lastX = 0;
 let lastY = 0;
 let baseSelection: string[] = [];
+let panDistance = 0;
+
+const PAN_CLICK_THRESHOLD = 4; // ПКМ, сдвинутая меньше, — это клик (открывает палитру)
 
 /** Рамка выделения в клиентских координатах. */
 const marquee = ref<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
@@ -64,6 +67,11 @@ function pinAt(target: EventTarget | null): PinTarget | null {
     return { ref: { node: nodeId, pin: pin.dataset.pin! }, dir: pin.dataset.dir as 'in' | 'out' };
 }
 
+function openPaletteAt(e: PointerEvent, origin: PinTarget | null) {
+    const rect = root.value!.getBoundingClientRect();
+    editor.openPalette([e.clientX - rect.left, e.clientY - rect.top], cursorWorld(e), origin);
+}
+
 function cursorWorld(e: PointerEvent): [number, number] {
     const rect = root.value!.getBoundingClientRect();
     return screenToWorld(editor.camera, e.clientX - rect.left, e.clientY - rect.top);
@@ -93,8 +101,10 @@ function onPointerDown(e: PointerEvent) {
     if (!el || (e.target as HTMLElement).tagName === 'INPUT') return;
 
     el.focus();
+    editor.closePalette();
     lastX = e.clientX;
     lastY = e.clientY;
+    panDistance = 0;
 
     if (e.button === 1 || e.button === 2) {
         mode = 'pan';
@@ -145,6 +155,7 @@ function onPointerMove(e: PointerEvent) {
     lastY = e.clientY;
 
     if (mode === 'pan') {
+        panDistance += Math.hypot(dx, dy);
         editor.camera = panBy(editor.camera, dx, dy);
     } else if (mode === 'drag') {
         editor.moveSelected(dx / editor.camera.z, dy / editor.camera.z);
@@ -158,11 +169,30 @@ function onPointerMove(e: PointerEvent) {
 
 function onPointerUp(e: PointerEvent) {
     if (mode === 'idle') return;
-    if (mode === 'connect') editor.finishConnect(pinAt(document.elementFromPoint(e.clientX, e.clientY)));
+    if (mode === 'connect') {
+        const under = document.elementFromPoint(e.clientX, e.clientY);
+        const origin = editor.pending?.origin ?? null;
+        const connected = editor.finishConnect(pinAt(under));
+
+        // Отпустили связь над пустым холстом — предлагаем создать ноду, подходящую к пину.
+        if (!connected && origin && under && root.value?.contains(under) && !under.closest('[data-node-id]')) {
+            openPaletteAt(e, origin);
+        }
+    } else if (mode === 'pan' && e.button === 2 && panDistance < PAN_CLICK_THRESHOLD) {
+        openPaletteAt(e, null);
+    }
     mode = 'idle';
     marquee.value = null;
     root.value?.releasePointerCapture(e.pointerId);
 }
+
+// После закрытия палитры возвращаем фокус на холст, чтобы работали горячие клавиши.
+watch(
+    () => editor.palette,
+    (now, before) => {
+        if (!now && before) root.value?.focus();
+    },
+);
 
 function onWheel(e: WheelEvent) {
     const rect = root.value!.getBoundingClientRect();

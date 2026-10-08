@@ -3,7 +3,12 @@ import type { Registry } from './registry';
 import type { Connection, Graph, NodeInstance, PinRef } from './types';
 
 let counter = 0;
-const uid = (prefix: string) => `${prefix}${++counter}`;
+const uid = (prefix: string, taken: (id: string) => boolean = () => false) => {
+    let id: string;
+    do id = `${prefix}${++counter}`;
+    while (taken(id));
+    return id;
+};
 
 export function createGraph(): Graph {
     return { nodes: {}, connections: [] };
@@ -17,7 +22,7 @@ export function addNode(
 ): NodeInstance {
     registry.get(type); // бросит ошибку, если типа нет
 
-    const node: NodeInstance = { id: init.id ?? uid('n'), type, x: 0, y: 0, values: {}, ...init };
+    const node: NodeInstance = { id: init.id ?? uid('n', (id) => id in graph.nodes), type, x: 0, y: 0, values: {}, ...init };
     if (graph.nodes[node.id]) throw new Error(`Нода с id "${node.id}" уже есть`);
 
     graph.nodes[node.id] = node;
@@ -46,7 +51,7 @@ export function connect(graph: Graph, registry: Registry, from: PinRef, to: PinR
         return !sameInput && !sameExecOutput;
     });
 
-    const connection: Connection = { id: uid('c'), from, to };
+    const connection: Connection = { id: uid('c', (id) => graph.connections.some((c) => c.id === id)), from, to };
     graph.connections.push(connection);
     return connection;
 }
