@@ -178,6 +178,8 @@ function onPointerUp(e: PointerEvent) {
         if (!connected && origin && under && root.value?.contains(under) && !under.closest('[data-node-id]')) {
             openPaletteAt(e, origin);
         }
+    } else if (mode === 'drag') {
+        editor.commit(); // перетаскивание целиком — один шаг истории (без сдвига ничего не запишется)
     } else if (mode === 'pan' && e.button === 2 && panDistance < PAN_CLICK_THRESHOLD) {
         openPaletteAt(e, null);
     }
@@ -195,8 +197,25 @@ onMounted(() => {
     update();
     resizeObserver = new ResizeObserver(update);
     resizeObserver.observe(el);
+    window.addEventListener('keydown', onHistoryKey);
 });
-onUnmounted(() => resizeObserver?.disconnect());
+onUnmounted(() => {
+    resizeObserver?.disconnect();
+    window.removeEventListener('keydown', onHistoryKey);
+});
+
+/** Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z. Смотрим на физическую клавишу (`code`), чтобы работало и в русской раскладке. */
+function onHistoryKey(e: KeyboardEvent) {
+    const tag = (e.target as HTMLElement | null)?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return; // в полях ввода своя отмена
+    if (!(e.ctrlKey || e.metaKey)) return;
+
+    if (e.code === 'KeyZ' && !e.shiftKey) editor.undo();
+    else if (e.code === 'KeyY' || (e.code === 'KeyZ' && e.shiftKey)) editor.redo();
+    else return;
+
+    e.preventDefault();
+}
 
 // После закрытия палитры возвращаем фокус на холст, чтобы работали горячие клавиши.
 watch(

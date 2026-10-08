@@ -2,8 +2,10 @@
 import { nextTick, ref, watch } from 'vue';
 import { isLocaleCode, LOCALE_CODES, LOCALE_NAMES, setLocale, useI18n } from '@/i18n';
 import { SLOW_STEP_MS, useRun } from '../run';
+import { useEditor } from '../store';
 
 const run = useRun();
+const editor = useEditor();
 const { t, locale } = useI18n();
 
 function onLocaleChange(e: Event) {
@@ -24,6 +26,11 @@ watch(
 
 <template>
     <div class="toolbar">
+        <div class="history">
+            <button class="icon" :disabled="!editor.canUndo" :title="t('history.undo')" @click="editor.undo()">↶</button>
+            <button class="icon" :disabled="!editor.canRedo" :title="t('history.redo')" @click="editor.redo()">↷</button>
+        </div>
+
         <button v-if="!run.running" class="btn run" @click="run.run()">▶ {{ t('run.run') }}</button>
         <button v-else class="btn stop" @click="run.stop()">■ {{ t('run.stop') }}</button>
 
@@ -79,6 +86,27 @@ watch(
 
 .btn.run { background: #2e7d32; }
 .btn.stop { background: #c62828; }
+
+.history {
+    display: flex;
+    gap: 4px;
+}
+
+.icon {
+    width: 26px;
+    padding: 2px 0;
+    border: 1px solid #333;
+    border-radius: 4px;
+    background: #2c3850;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.icon:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
 
 .lang {
     padding: 2px 4px;

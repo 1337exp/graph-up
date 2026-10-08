@@ -9,6 +9,7 @@ import * as vars from '@/graph/variables';
 import { canConnect } from '@/graph/validate';
 import { createDefaultRegistry } from '@/nodes';
 import { createCamera, screenToWorld, type Camera } from './camera';
+import { History } from './history';
 import { findCompatiblePin } from './palette';
 
 export type PinDir = 'in' | 'out';
@@ -258,6 +259,52 @@ export const useEditor = defineStore('editor', () => {
     }
 
     //---]>
+    // undo/redo
+
+    const snapshot = () => JSON.stringify(graph.value);
+    const history = new History(snapshot());
+    const canUndo = ref(false);
+    const canRedo = ref(false);
+
+    function syncHistory() {
+        canUndo.value = history.canUndo;
+        canRedo.value = history.canRedo;
+    }
+
+    /** Запоминает текущий граф как шаг истории. Одинаковый `key` подряд склеивает правки (набор числа в поле). */
+    function commit(key?: string) {
+        history.commit(snapshot(), key);
+        syncHistory();
+    }
+
+    function restore(state: string | null): boolean {
+        if (state === null) return false;
+
+        graph.value = JSON.parse(state);
+        // Выделение и незавершённые действия не входят в историю, но не должны ссылаться на исчезнувшее.
+        for (const id of [...selection]) if (!graph.value.nodes[id]) selection.delete(id);
+        if (selectedConnection.value && !graph.value.connections.some((c) => c.id === selectedConnection.value)) {
+            selectedConnection.value = null;
+        }
+        pending.value = null;
+        palette.value = null;
+        syncHistory();
+        return true;
+    }
+
+    const undo = () => restore(history.undo());
+    const redo = () => restore(history.redo());
+
+    /** Действие, меняющее граф: после него состояние попадает в историю. */
+    function recorded<A extends unknown[], R>(fn: (...args: A) => R, key?: (...args: A) => string): (...args: A) => R {
+        return (...args) => {
+            const result = fn(...args);
+            commit(key?.(...args));
+            return result;
+        };
+    }
+
+    //---]>
     // палитра нод
 
     const pinDefOf = (t: PinTarget) => pinOf(registry, graph.value, t.ref, t.dir)!;
@@ -302,17 +349,22 @@ export const useEditor = defineStore('editor', () => {
 
     return {
         viewport,
-        addVariable,
-        removeVariable,
-        renameVariable,
-        retypeVariable,
-        setVariableDefault,
-        addVariableNode,
+        addVariable: recorded(addVariable),
+        removeVariable: recorded(removeVariable),
+        renameVariable: recorded(renameVariable),
+        retypeVariable: recorded(retypeVariable),
+        setVariableDefault: recorded(setVariableDefault, (id) => `default:${id}`),
+        addVariableNode: recorded(addVariableNode),
         palette,
         openPalette,
         closePalette,
         fitsPaletteOrigin,
-        createFromPalette,
+        createFromPalette: recorded(createFromPalette),
+        canUndo,
+        canRedo,
+        commit,
+        undo,
+        redo,
         registry,
         graph,
         camera,
@@ -324,14 +376,14 @@ export const useEditor = defineStore('editor', () => {
         toggleSelected,
         selectConnection,
         moveSelected,
-        removeSelected,
+        removeSelected: recorded(removeSelected),
         isConnected,
-        setValue,
+        setValue: recorded(setValue, (nodeId, pin) => `value:${nodeId}:${pin}`),
         setPinOffsets,
         clearPinOffsets,
         pinWorld,
         startConnect,
         updateConnect,
-        finishConnect,
+        finishConnect: recorded(finishConnect),
     };
 });

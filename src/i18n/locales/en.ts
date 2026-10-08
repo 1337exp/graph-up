@@ -10,6 +10,11 @@ export default {
         language: 'Language',
     },
 
+    history: {
+        undo: 'Undo (Ctrl+Z)',
+        redo: 'Redo (Ctrl+Y)',
+    },
+
     types: {
         boolean: 'Boolean',
         int: 'Integer',

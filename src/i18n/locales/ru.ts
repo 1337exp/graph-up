@@ -7,6 +7,11 @@ export default {
         language: 'Язык',
     },
 
+    history: {
+        undo: 'Отменить (Ctrl+Z)',
+        redo: 'Повторить (Ctrl+Y)',
+    },
+
     types: {
         boolean: 'Логический',
         int: 'Целое',
