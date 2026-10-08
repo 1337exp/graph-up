@@ -37,14 +37,14 @@ watch(
         </select>
     </div>
 
-    <div class="log">
+    <div class="log-panel">
         <header>
             <span>{{ t('log.title') }}</span>
             <button class="clear" @click="run.clearLog()">{{ t('log.clear') }}</button>
         </header>
         <div ref="logEl" class="lines">
             <div v-if="!run.lines.length" class="empty">{{ t('log.empty') }}</div>
-            <div v-for="(line, i) in run.lines" :key="i" class="line" :class="line.kind">
+            <div v-for="(line, i) in run.lines" :key="i" class="line" :class="`kind-${line.kind}`">
                 {{ line.kind === 'log' ? line.text : t(line.key, line.args) }}
             </div>
         </div>
@@ -96,7 +96,7 @@ watch(
     cursor: pointer;
 }
 
-.log {
+.log-panel {
     position: absolute;
     left: 12px;
     right: 12px;
@@ -111,7 +111,7 @@ watch(
     font: 12px/1.5 ui-monospace, Consolas, monospace;
 }
 
-.log header {
+.log-panel header {
     display: flex;
     justify-content: space-between;
     padding: 3px 10px;
@@ -134,6 +134,6 @@ watch(
 }
 
 .empty { color: #5c626b; }
-.line.info { color: #8b929c; }
-.line.error { color: #ff6b6b; }
+.line.kind-info { color: #8b929c; }
+.line.kind-error { color: #ff6b6b; }
 </style>
