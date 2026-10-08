@@ -16,7 +16,7 @@ export function defineNode<I extends PinDefs, O extends PinDefs>(def: NodeDef<I,
     return def;
 }
 
-/** Нода «чистая», если у неё нет exec-пинов: считается лениво, по запросу. */
+/** Нода «чистая», если у неё нет exec-пинов: считается лениво, по запросу. Определяется по статическим пинам. */
 export function isPure(def: NodeDef): boolean {
     return ![...Object.values(def.inputs), ...Object.values(def.outputs)].some((p) => p.kind === 'exec');
 }

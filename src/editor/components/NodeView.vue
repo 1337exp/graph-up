@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import { computed, onMounted, onUnmounted, onUpdated, ref } from 'vue';
+import { resolvePins } from '@/graph/pins';
 import type { DataPinDef, NodeInstance, PinDef } from '@/graph/types';
 import { useI18n } from '@/i18n';
 import { pinColor } from '../colors';
@@ -13,8 +14,10 @@ const run = useRun();
 const { nodeTitle, pinLabel } = useI18n();
 const def = computed(() => editor.registry.get(props.node.type));
 
-const inputs = computed(() => Object.entries(def.value.inputs));
-const outputs = computed(() => Object.entries(def.value.outputs));
+// Пины берём у конкретной ноды: у Get/Set Variable их тип зависит от переменной.
+const pins = computed(() => resolvePins(editor.registry, editor.graph, props.node));
+const inputs = computed(() => Object.entries(pins.value.inputs));
+const outputs = computed(() => Object.entries(pins.value.outputs));
 
 const label = (name: string, pin: PinDef) => pinLabel(def.value.id, name, pin.label);
 
@@ -61,7 +64,8 @@ function valueOf(name: string, pin: DataPinDef) {
 function onInput(name: string, pin: DataPinDef, e: Event) {
     const el = e.target as HTMLInputElement;
     if (pin.type === 'boolean') editor.setValue(props.node.id, name, el.checked);
-    else if (pin.type === 'number') editor.setValue(props.node.id, name, el.value === '' ? 0 : Number(el.value));
+    else if (pin.type === 'int') editor.setValue(props.node.id, name, el.value === '' ? 0 : Math.trunc(Number(el.value)));
+    else if (pin.type === 'float') editor.setValue(props.node.id, name, el.value === '' ? 0 : Number(el.value));
     else editor.setValue(props.node.id, name, el.value);
 }
 </script>
@@ -74,7 +78,10 @@ function onInput(name: string, pin: DataPinDef, e: Event) {
         :data-node-id="node.id"
         :style="{ transform: `translate(${node.x}px, ${node.y}px)` }"
     >
-        <header class="title">{{ nodeTitle(def) }}</header>
+        <header class="title">
+            {{ nodeTitle(def) }}
+            <span v-if="pins.subtitle" class="subtitle">{{ pins.subtitle }}</span>
+        </header>
 
         <div class="body">
             <div class="column inputs">
@@ -92,7 +99,8 @@ function onInput(name: string, pin: DataPinDef, e: Event) {
                         <input
                             v-else
                             class="field"
-                            :type="pin.type === 'number' ? 'number' : 'text'"
+                            :type="pin.type === 'int' || pin.type === 'float' ? 'number' : 'text'"
+                            :step="pin.type === 'int' ? 1 : 'any'"
                             :value="valueOf(name, pin) as string | number | undefined"
                             @input="onInput(name, pin, $event)"
                         />
@@ -139,6 +147,12 @@ function onInput(name: string, pin: DataPinDef, e: Event) {
 .node.failed {
     border-color: #ff5252;
     box-shadow: 0 0 0 2px #ff5252, 0 0 16px rgba(255, 82, 82, 0.6);
+}
+
+.subtitle {
+    margin-left: 4px;
+    font-weight: 400;
+    opacity: 0.75;
 }
 
 .title {

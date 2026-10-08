@@ -1,7 +1,10 @@
+import type { ConcreteType } from './coerce';
+
 // Типы пинов и значений.
 
 export interface DataTypeMap {
-    number: number;
+    int: number;
+    float: number;
     string: string;
     boolean: boolean;
     any: unknown;
@@ -47,8 +50,10 @@ export interface RunContext<O extends PinDefs = PinDefs> {
     exec(pin: ExecNames<O>): Promise<void>;
     /** Публикует значения data-выходов сразу, не дожидаясь конца `run` (нужно, чтобы тело цикла видело индекс). */
     setOutputs(values: Partial<DataValues<O>>): void;
-    /** Переменные текущего запуска. */
+    /** Переменные текущего запуска по id переменной. */
     vars: Map<string, unknown>;
+    /** Настройки экземпляра ноды (`NodeInstance.config`), например `variable`. */
+    config: Record<string, unknown>;
 }
 
 export interface RunResult<O extends PinDefs> {
@@ -58,11 +63,22 @@ export interface RunResult<O extends PinDefs> {
     next?: ExecNames<O>;
 }
 
+/** Пины и подпись, вычисленные по экземпляру ноды: накладываются поверх статических `inputs`/`outputs`. */
+export interface PinOverrides {
+    inputs?: PinDefs;
+    outputs?: PinDefs;
+    subtitle?: string;
+}
+
 export interface NodeDef<I extends PinDefs = PinDefs, O extends PinDefs = PinDefs> {
     id: string;
     title: string;
     inputs: I;
     outputs: O;
+    /** Нода не показывается в палитре (создаётся другим способом, например Get/Set из панели переменных). */
+    hidden?: boolean;
+    /** Для нод, чьи пины зависят от экземпляра (тип переменной). Методом: см. ниже про присваиваемость. */
+    resolve?(node: NodeInstance, graph: Graph): PinOverrides;
     // Методом, а не свойством-функцией: так NodeDef<конкретный> присваивается NodeDef<общий>.
     run(inputs: DataValues<I>, ctx: RunContext<O>): RunResult<O> | Promise<RunResult<O>>;
 }
@@ -80,6 +96,8 @@ export interface NodeInstance {
     y: number;
     /** Значения неподключённых data-входов, заданные пользователем. */
     values: Record<string, unknown>;
+    /** Настройки, не относящиеся к пинам (у Get/Set Variable: id переменной). */
+    config?: Record<string, unknown>;
 }
 
 export interface PinRef {
@@ -93,7 +111,16 @@ export interface Connection {
     to: PinRef; // вход
 }
 
+/** Переменная графа. Типизирована: тип определяет пины нод Get/Set и их цвет. */
+export interface Variable {
+    id: string;
+    name: string;
+    type: ConcreteType;
+    default: unknown;
+}
+
 export interface Graph {
     nodes: Record<string, NodeInstance>;
     connections: Connection[];
+    variables: Variable[];
 }

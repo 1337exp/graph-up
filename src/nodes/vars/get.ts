@@ -1,13 +1,23 @@
 import { data, defineNode } from '@/graph/define';
+import { variableOf } from '@/graph/variables';
 
-/** Чистая нода: читает переменную в момент, когда кто-то запросил значение. */
+/**
+ * Читает переменную. Чистая нода: значение берётся в момент, когда кто-то его запросил.
+ * Тип выхода `value` равен типу переменной (пины вычисляются по экземпляру, см. `resolve`).
+ */
 export default defineNode({
     id: 'vars/get',
-    title: 'Get Variable',
-    inputs: { name: data('string', 'var') },
+    title: 'Get',
+    hidden: true, // создаётся из панели переменных
+    inputs: {},
     outputs: { value: data('any') },
-    run: ({ name }, ctx) => {
-        if (!ctx.vars.has(name)) throw new Error(`Variable "${name}" is not set`);
-        return { outputs: { value: ctx.vars.get(name) } };
+    resolve: (node, graph) => {
+        const variable = variableOf(graph, node);
+        return variable ? { subtitle: variable.name, outputs: { value: data(variable.type) } } : {};
+    },
+    run: (_inputs, ctx) => {
+        const id = ctx.config.variable as string;
+        if (!ctx.vars.has(id)) throw new Error('Variable is missing (deleted?)');
+        return { outputs: { value: ctx.vars.get(id) } };
     },
 });

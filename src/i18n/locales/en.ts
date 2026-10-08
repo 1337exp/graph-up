@@ -10,6 +10,25 @@ export default {
         language: 'Language',
     },
 
+    types: {
+        boolean: 'Boolean',
+        int: 'Integer',
+        float: 'Float',
+        string: 'String',
+        any: 'Any',
+    },
+
+    variables: {
+        title: 'Variables',
+        add: 'Add',
+        get: 'Get',
+        set: 'Set',
+        remove: 'Delete',
+        empty: 'No variables yet. Create one, then add Get/Set to the canvas.',
+        removedLinks: 'Links removed: {0}',
+        broken: 'Variable was deleted',
+    },
+
     run: {
         run: 'Run',
         stop: 'Stop',

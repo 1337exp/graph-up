@@ -1,10 +1,14 @@
 import { defineStore } from 'pinia';
 import { markRaw, reactive, ref } from 'vue';
+import type { ConcreteType } from '@/graph/coerce';
+import { coerce } from '@/graph/coerce';
 import { addNode, connect, createGraph, disconnect, removeNode } from '@/graph/graph';
+import { pinOf } from '@/graph/pins';
 import type { PinRef } from '@/graph/types';
+import * as vars from '@/graph/variables';
 import { canConnect } from '@/graph/validate';
 import { createDefaultRegistry } from '@/nodes';
-import { createCamera, type Camera } from './camera';
+import { createCamera, screenToWorld, type Camera } from './camera';
 import { findCompatiblePin } from './palette';
 
 export type PinDir = 'in' | 'out';
@@ -38,8 +42,8 @@ type PinOffsets = Record<string, [number, number]>;
 
 function createDemo(registry: ReturnType<typeof createDefaultRegistry>) {
     const g = createGraph();
-    const add = (type: string, id: string, x: number, y: number, values: Record<string, unknown> = {}) =>
-        addNode(g, registry, type, { id, x, y, values });
+    const add = (type: string, id: string, x: number, y: number, values: Record<string, unknown> = {}, variable?: string) =>
+        addNode(g, registry, type, { id, x, y, values, ...(variable ? { config: { variable } } : {}) });
 
     add('flow/start', 'start', 40, 120);
     add('math/greater', 'gt', 40, 280, { a: 5, b: 3 });
@@ -53,14 +57,15 @@ function createDemo(registry: ReturnType<typeof createDefaultRegistry>) {
     connect(g, registry, { node: 'branch', pin: 'else' }, { node: 'no', pin: 'in' });
 
     // Вторая программа (запускается, если выделить её Start): sum = 1 + 2 + 3 + 4 + 5
+    const sum = vars.addVariable(g, { name: 'sum', type: 'float' }).id;
     add('flow/start', 'start2', 40, 460);
-    add('vars/set', 'init', 200, 460, { name: 'sum', value: 0 });
+    add('vars/set', 'init', 200, 460, { value: 0 }, sum);
     add('flow/for-loop', 'loop', 420, 460, { first: 1, last: 5 });
-    add('vars/set', 'accumulate', 880, 460, { name: 'sum' });
-    add('vars/get', 'read', 440, 640, { name: 'sum' });
+    add('vars/set', 'accumulate', 880, 460, {}, sum);
+    add('vars/get', 'read', 440, 640, {}, sum);
     add('math/add', 'plus', 660, 600);
     add('debug/print', 'result', 880, 720);
-    add('vars/get', 'readResult', 640, 800, { name: 'sum' });
+    add('vars/get', 'readResult', 640, 800, {}, sum);
 
     connect(g, registry, { node: 'start2', pin: 'out' }, { node: 'init', pin: 'in' });
     connect(g, registry, { node: 'init', pin: 'out' }, { node: 'loop', pin: 'in' });
@@ -180,7 +185,7 @@ export const useEditor = defineStore('editor', () => {
 
         if (pin.dir === 'in') {
             const conn = graph.value.connections.find((c) => c.to.node === pin.ref.node && c.to.pin === pin.ref.pin);
-            const def = registry.get(graph.value.nodes[pin.ref.node]!.type).inputs[pin.ref.pin];
+            const def = pinOf(registry, graph.value, pin.ref, 'in');
             if (conn && def?.kind === 'data') {
                 disconnect(graph.value, conn.id);
                 origin = { ref: conn.from, dir: 'out' };
@@ -209,10 +214,53 @@ export const useEditor = defineStore('editor', () => {
     }
 
     //---]>
+    // переменные
+
+    /** Размер видимой области холста (px): нужен, чтобы ставить новые ноды в центр экрана. Обновляет холст. */
+    const viewport = ref({ w: 800, h: 600 });
+
+    function addVariable() {
+        return vars.addVariable(graph.value);
+    }
+
+    function removeVariable(id: string) {
+        vars.removeVariable(graph.value, id);
+    }
+
+    function renameVariable(id: string, name: string) {
+        const variable = graph.value.variables.find((v) => v.id === id);
+        if (variable && name.trim()) variable.name = name.trim();
+    }
+
+    /** Меняет тип переменной. Возвращает число связей, которые пришлось удалить. */
+    function retypeVariable(id: string, type: ConcreteType): number {
+        return vars.setVariableType(graph.value, registry, id, type);
+    }
+
+    function setVariableDefault(id: string, value: unknown) {
+        const variable = graph.value.variables.find((v) => v.id === id);
+        if (!variable) return;
+        const converted = coerce(variable.type, value);
+        if (converted !== undefined && !(typeof converted === 'number' && Number.isNaN(converted))) variable.default = converted;
+    }
+
+    /** Ставит Get/Set для переменной в центр видимой области и выделяет новую ноду. */
+    function addVariableNode(kind: 'get' | 'set', variableId: string) {
+        const [x, y] = screenToWorld(camera.value, viewport.value.w / 2, viewport.value.h / 2);
+        const node = addNode(graph.value, registry, kind === 'get' ? 'vars/get' : 'vars/set', {
+            x: Math.round(x),
+            y: Math.round(y),
+            config: { variable: variableId },
+        });
+        setSelection([node.id]);
+        selectedConnection.value = null;
+        return node;
+    }
+
+    //---]>
     // палитра нод
 
-    const pinDefOf = (t: PinTarget) =>
-        registry.get(graph.value.nodes[t.ref.node]!.type)[t.dir === 'out' ? 'outputs' : 'inputs'][t.ref.pin]!;
+    const pinDefOf = (t: PinTarget) => pinOf(registry, graph.value, t.ref, t.dir)!;
 
     function openPalette(screen: [number, number], world: [number, number], origin: PinTarget | null = null) {
         palette.value = { screen, world, origin };
@@ -253,6 +301,13 @@ export const useEditor = defineStore('editor', () => {
     }
 
     return {
+        viewport,
+        addVariable,
+        removeVariable,
+        renameVariable,
+        retypeVariable,
+        setVariableDefault,
+        addVariableNode,
         palette,
         openPalette,
         closePalette,

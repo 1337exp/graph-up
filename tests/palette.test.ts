@@ -17,7 +17,7 @@ describe('палитра: фильтр и группы', () => {
 
     it('сортирует и группирует по категориям', () => {
         const groups = groupByCategory(filterNodes(defs, ''));
-        expect(groups.map((g) => g.category)).toEqual(['debug', 'flow', 'math', 'vars']);
+        expect(groups.map((g) => g.category)).toEqual(['debug', 'flow', 'math']);
         expect(groups.every((g) => g.nodes.every((d) => categoryOf(d) === g.category))).toBe(true);
     });
 });

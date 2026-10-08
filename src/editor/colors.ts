@@ -1,7 +1,8 @@
 import type { DataType, PinDef } from '@/graph/types';
 
 const DATA_COLORS: Record<DataType, string> = {
-    number: '#4fc3f7',
+    int: '#1de9b6',
+    float: '#9ccc65',
     string: '#f06292',
     boolean: '#e53935',
     any: '#9e9e9e',

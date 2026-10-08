@@ -1,17 +1,11 @@
-import { canConnect } from './validate';
+import { uid } from './ids';
+import { pinOf } from './pins';
 import type { Registry } from './registry';
+import { canConnect } from './validate';
 import type { Connection, Graph, NodeInstance, PinRef } from './types';
 
-let counter = 0;
-const uid = (prefix: string, taken: (id: string) => boolean = () => false) => {
-    let id: string;
-    do id = `${prefix}${++counter}`;
-    while (taken(id));
-    return id;
-};
-
 export function createGraph(): Graph {
-    return { nodes: {}, connections: [] };
+    return { nodes: {}, connections: [], variables: [] };
 }
 
 export function addNode(
@@ -43,7 +37,7 @@ export function connect(graph: Graph, registry: Registry, from: PinRef, to: PinR
     const check = canConnect(graph, registry, from, to);
     if (!check.ok) throw new Error(check.reason);
 
-    const fromKind = registry.get(graph.nodes[from.node]!.type).outputs[from.pin]!.kind;
+    const fromKind = pinOf(registry, graph, from, 'out')!.kind;
 
     graph.connections = graph.connections.filter((c) => {
         const sameInput = fromKind === 'data' && c.to.node === to.node && c.to.pin === to.pin;

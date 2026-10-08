@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { panBy, screenToWorld, zoomAt } from '../camera';
 import { useEditor, type PinTarget } from '../store';
 import ConnectionsLayer from './ConnectionsLayer.vue';
@@ -185,6 +185,18 @@ function onPointerUp(e: PointerEvent) {
     marquee.value = null;
     root.value?.releasePointerCapture(e.pointerId);
 }
+
+// Размер холста нужен стору, чтобы ставить новые ноды в центр экрана.
+let resizeObserver: ResizeObserver | null = null;
+
+onMounted(() => {
+    const el = root.value!;
+    const update = () => (editor.viewport = { w: el.clientWidth, h: el.clientHeight });
+    update();
+    resizeObserver = new ResizeObserver(update);
+    resizeObserver.observe(el);
+});
+onUnmounted(() => resizeObserver?.disconnect());
 
 // После закрытия палитры возвращаем фокус на холст, чтобы работали горячие клавиши.
 watch(

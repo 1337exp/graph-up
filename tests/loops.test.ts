@@ -4,13 +4,15 @@ import { useEditor } from '@/editor/store';
 import { useRun } from '@/editor/run';
 import { coerce, execute, ExecutionError } from '@/graph/execute';
 import { addNode, connect, createGraph } from '@/graph/graph';
+import { addVariable } from '@/graph/variables';
 import { createDefaultRegistry } from '@/nodes';
 
 const registry = createDefaultRegistry();
 
 function setup() {
     const g = createGraph();
-    const add = (type: string, id: string, values: Record<string, unknown> = {}) => addNode(g, registry, type, { id, values });
+    const add = (type: string, id: string, values: Record<string, unknown> = {}, variable?: string) =>
+        addNode(g, registry, type, { id, values, ...(variable ? { config: { variable } } : {}) });
     const link = (a: string, ap: string, b: string, bp: string) =>
         connect(g, registry, { node: a, pin: ap }, { node: b, pin: bp });
     return { g, add, link };
@@ -19,36 +21,39 @@ function setup() {
 /** sum = first + … + last, результат печатается после цикла. */
 function sumGraph(first: number, last: number) {
     const { g, add, link } = setup();
+    const sum = addVariable(g, { name: 'sum', type: 'float' });
+
     add('flow/start', 's');
-    add('vars/set', 'init', { name: 'sum', value: 0 });
+    add('vars/set', 'init', { value: 0 }, sum.id);
     add('flow/for-loop', 'loop', { first, last });
-    add('vars/set', 'acc', { name: 'sum' });
-    add('vars/get', 'read', { name: 'sum' });
+    add('vars/set', 'acc', {}, sum.id);
+    add('vars/get', 'read', {}, sum.id);
     add('math/add', 'plus');
     add('debug/print', 'out');
-    add('vars/get', 'readOut', { name: 'sum' });
+    add('vars/get', 'readOut', {}, sum.id);
 
     link('s', 'out', 'init', 'in');
     link('init', 'out', 'loop', 'in');
     link('loop', 'body', 'acc', 'in');
     link('loop', 'completed', 'out', 'in');
     link('read', 'value', 'plus', 'a');
-    link('loop', 'index', 'plus', 'b');
+    link('loop', 'index', 'plus', 'b'); // int → float
     link('plus', 'result', 'acc', 'value');
     link('readOut', 'value', 'out', 'message');
-    return g;
+    return { g, sumId: sum.id };
 }
 
 describe('For Loop и переменные', () => {
     it('суммирует 1..5 = 15', async () => {
-        const res = await execute(sumGraph(1, 5), registry, 's');
+        const { g, sumId } = sumGraph(1, 5);
+        const res = await execute(g, registry, 's');
         expect(res.logs).toEqual(['15']);
-        expect(res.vars).toEqual({ sum: 15 });
+        expect(res.vars).toEqual({ [sumId]: 15 });
     });
 
     it('диапазон включает обе границы и может быть пустым', async () => {
-        expect((await execute(sumGraph(3, 3), registry, 's')).logs).toEqual(['3']);
-        expect((await execute(sumGraph(5, 1), registry, 's')).logs).toEqual(['0']);
+        expect((await execute(sumGraph(3, 3).g, registry, 's')).logs).toEqual(['3']);
+        expect((await execute(sumGraph(5, 1).g, registry, 's')).logs).toEqual(['0']);
     });
 
     it('индекс виден телу цикла (Print в теле)', async () => {
@@ -76,18 +81,30 @@ describe('For Loop и переменные', () => {
         expect((await execute(g, registry, 's')).logs).toHaveLength(6);
     });
 
-    it('чтение неустановленной переменной — ошибка ноды с её id', async () => {
+    it('Get работает без Set: переменная стартует со значения по умолчанию', async () => {
         const { g, add, link } = setup();
+        const v = addVariable(g, { name: 'greeting', type: 'string', default: 'hello' });
         add('flow/start', 's');
-        add('vars/get', 'g', { name: 'nope' });
+        add('vars/get', 'get', {}, v.id);
         add('debug/print', 'p');
         link('s', 'out', 'p', 'in');
-        link('g', 'value', 'p', 'message');
+        link('get', 'value', 'p', 'message');
+
+        expect((await execute(g, registry, 's')).logs).toEqual(['hello']);
+    });
+
+    it('удалённая переменная — ошибка ноды с её id', async () => {
+        const { g, add, link } = setup();
+        add('flow/start', 's');
+        add('vars/get', 'get', {}, 'v-missing');
+        add('debug/print', 'p');
+        link('s', 'out', 'p', 'in');
+        link('get', 'value', 'p', 'message');
 
         const err = await execute(g, registry, 's').catch((e) => e);
         expect(err).toBeInstanceOf(ExecutionError);
         expect(err.kind).toBe('nodeError');
-        expect(err.nodeId).toBe('g');
+        expect(err.nodeId).toBe('get');
     });
 });
 
@@ -117,26 +134,23 @@ describe('защита циклов', () => {
 });
 
 describe('coerce', () => {
-    it('приводит any-значения к типу пина', () => {
-        expect(coerce('number', '0')).toBe(0);
-        expect(coerce('number', 7)).toBe(7);
+    it('приводит значения к типу пина', () => {
+        expect(coerce('float', '0.5')).toBe(0.5);
+        expect(coerce('int', '7.9')).toBe(7);
+        expect(coerce('int', -2.5)).toBe(-2);
         expect(coerce('string', 5)).toBe('5');
         expect(coerce('boolean', 'false')).toBe(false);
         expect(coerce('boolean', 'true')).toBe(true);
         expect(coerce('any', '5')).toBe('5');
-        expect(coerce('number', undefined)).toBeUndefined();
+        expect(coerce('float', undefined)).toBeUndefined();
     });
 
-    it('строка "0" из any-поля не склеивается как строка при сложении', async () => {
+    it('строка из поля ввода не склеивается как строка при сложении', async () => {
         const { g, add, link } = setup();
         add('flow/start', 's');
-        add('vars/set', 'init', { name: 'v', value: '10' }); // строка из текстового поля
-        add('vars/get', 'read', { name: 'v' });
-        add('math/add', 'plus', { b: 1 });
+        add('math/add', 'plus', { a: '10', b: 1 }); // «10» — строка, как приходит из текстового поля
         add('debug/print', 'p');
-        link('s', 'out', 'init', 'in');
-        link('init', 'out', 'p', 'in');
-        link('read', 'value', 'plus', 'a');
+        link('s', 'out', 'p', 'in');
         link('plus', 'result', 'p', 'message');
 
         expect((await execute(g, registry, 's')).logs).toEqual(['11']);

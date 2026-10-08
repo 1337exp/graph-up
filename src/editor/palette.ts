@@ -13,6 +13,7 @@ export function filterNodes(defs: AnyNodeDef[], query: string, extraText: (def: 
 
     return defs
         .filter((def) => {
+            if (def.hidden) return false;
             const haystack = `${def.title} ${def.id} ${extraText(def)}`.toLowerCase();
             return words.every((w) => haystack.includes(w));
         })

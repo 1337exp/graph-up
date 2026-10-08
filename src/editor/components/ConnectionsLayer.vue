@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import { computed } from 'vue';
 import { pinColor } from '../colors';
+import { pinOf } from '@/graph/pins';
 import { curvePath } from '../curve';
 import { useEditor } from '../store';
 
@@ -20,7 +21,8 @@ const lines = computed<Line[]>(() => {
         const b = editor.pinWorld(c.to, 'in');
         if (!a || !b) continue;
 
-        const pin = editor.registry.get(editor.graph.nodes[c.from.node]!.type).outputs[c.from.pin]!;
+        const pin = pinOf(editor.registry, editor.graph, c.from, 'out');
+        if (!pin) continue;
         out.push({ id: c.id, d: curvePath(a[0], a[1], b[0], b[1]), color: pinColor(pin), exec: pin.kind === 'exec' });
     }
     return out;
@@ -33,7 +35,8 @@ const preview = computed(() => {
     const pos = editor.pinWorld(p.origin.ref, p.origin.dir);
     if (!pos) return null;
 
-    const pin = editor.registry.get(editor.graph.nodes[p.origin.ref.node]!.type)[p.origin.dir === 'out' ? 'outputs' : 'inputs'][p.origin.ref.pin]!;
+    const pin = pinOf(editor.registry, editor.graph, p.origin.ref, p.origin.dir);
+    if (!pin) return null;
     const [cx, cy] = p.cursor;
     const d = p.origin.dir === 'out' ? curvePath(pos[0], pos[1], cx, cy) : curvePath(cx, cy, pos[0], pos[1]);
     return { d, color: p.valid === false ? '#ff5252' : pinColor(pin), invalid: p.valid === false };

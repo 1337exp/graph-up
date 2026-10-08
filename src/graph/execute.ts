@@ -1,6 +1,10 @@
+import { coerce } from './coerce';
 import { isPure } from './define';
+import { resolvePins } from './pins';
 import type { Registry } from './registry';
-import type { AnyNodeDef, DataType, Graph, NodeInstance, RunContext } from './types';
+import type { AnyNodeDef, Graph, NodeInstance, RunContext } from './types';
+
+export { coerce };
 
 /** Причина остановки. По ней UI подбирает перевод; `message` — английский текст для разработчика. */
 export type ExecutionErrorKind = 'limit' | 'depth' | 'aborted' | 'nodeNotFound' | 'dataCycle' | 'nodeError';
@@ -41,26 +45,8 @@ export interface ExecuteResult {
     logs: string[];
     /** Последние выходные значения каждой выполненной (exec) ноды. */
     outputs: Record<string, Record<string, unknown>>;
-    /** Переменные на момент завершения. */
+    /** Переменные на момент завершения (по id переменной). */
     vars: Record<string, unknown>;
-}
-
-/**
- * Приводит значение к типу пина. Нужно, потому что `any` (например, из переменной или текстового
- * поля) может прийти в `number`-пин строкой: без приведения `"0" + 1` дало бы `"01"`.
- */
-export function coerce(type: DataType, value: unknown): unknown {
-    if (value === undefined || type === 'any') return value;
-
-    switch (type) {
-        case 'number':
-            return typeof value === 'number' ? value : Number(value);
-        case 'string':
-            return typeof value === 'string' ? value : String(value);
-        case 'boolean':
-            if (typeof value === 'boolean') return value;
-            return !(value === 'false' || value === '0' || value === '' || !value);
-    }
 }
 
 /**
@@ -80,7 +66,8 @@ export async function execute(
 
     const logs: string[] = [];
     const outputs: Record<string, Record<string, unknown>> = {};
-    const vars = new Map<string, unknown>();
+    // Переменные стартуют со значений по умолчанию (как в Blueprint): Get работает и без предшествующего Set.
+    const vars = new Map<string, unknown>(graph.variables.map((v) => [v.id, coerce(v.type, v.default)]));
     let pureCache = new Map<string, Record<string, unknown>>();
     const evaluating = new Set<string>();
     let steps = 0;
@@ -110,6 +97,7 @@ export async function execute(
         return {
             nodeId: node.id,
             vars,
+            config: node.config ?? {},
             log(message) {
                 logs.push(message);
                 onLog?.(message, node.id);
@@ -126,10 +114,10 @@ export async function execute(
         };
     }
 
-    async function resolveInputs(node: NodeInstance, def: AnyNodeDef): Promise<Record<string, unknown>> {
+    async function resolveInputs(node: NodeInstance): Promise<Record<string, unknown>> {
         const inputs: Record<string, unknown> = {};
 
-        for (const [name, pin] of Object.entries(def.inputs)) {
+        for (const [name, pin] of Object.entries(resolvePins(registry, graph, node).inputs)) {
             if (pin.kind !== 'data') continue;
 
             const conn = graph.connections.find((c) => c.to.node === node.id && c.to.pin === name);
@@ -158,7 +146,7 @@ export async function execute(
         evaluating.add(node.id);
 
         try {
-            const result = await def.run(await resolveInputs(node, def), makeCtx(node, 0));
+            const result = await def.run(await resolveInputs(node), makeCtx(node, 0));
             const out = (result.outputs ?? {}) as Record<string, unknown>;
             pureCache.set(node.id, out);
             return out;
@@ -184,7 +172,7 @@ export async function execute(
 
             let nextPin: string | undefined;
             try {
-                const result = await def.run(await resolveInputs(node, def), makeCtx(node, depth));
+                const result = await def.run(await resolveInputs(node), makeCtx(node, depth));
                 outputs[node.id] = { ...outputs[node.id], ...(result.outputs as Record<string, unknown> | undefined) };
                 nextPin = result.next;
             } catch (e) {
@@ -192,7 +180,7 @@ export async function execute(
             }
 
             if (nextPin === undefined) {
-                const execOutputs = Object.entries(def.outputs).filter(([, p]) => p.kind === 'exec');
+                const execOutputs = Object.entries(resolvePins(registry, graph, node).outputs).filter(([, p]) => p.kind === 'exec');
                 if (execOutputs.length === 1) nextPin = execOutputs[0]![0];
             }
 

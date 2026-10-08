@@ -7,6 +7,25 @@ export default {
         language: 'Язык',
     },
 
+    types: {
+        boolean: 'Логический',
+        int: 'Целое',
+        float: 'Дробное',
+        string: 'Строка',
+        any: 'Любой',
+    },
+
+    variables: {
+        title: 'Переменные',
+        add: 'Добавить',
+        get: 'Получить',
+        set: 'Задать',
+        remove: 'Удалить',
+        empty: 'Переменных нет. Создай — и добавь на холст Get/Set.',
+        removedLinks: 'Удалено связей: {0}',
+        broken: 'Переменная удалена',
+    },
+
     run: {
         run: 'Запустить',
         stop: 'Стоп',
@@ -52,8 +71,8 @@ export default {
             'flow/branch': { title: 'Ветвление', pins: { condition: 'Условие', then: 'Да', else: 'Нет' } },
             'math/add': { title: 'Сложение', pins: { result: 'результат' } },
             'math/greater': { title: 'Больше', pins: { result: 'результат' } },
-            'vars/set': { title: 'Задать переменную', pins: { name: 'имя', value: 'значение' } },
-            'vars/get': { title: 'Получить переменную', pins: { name: 'имя', value: 'значение' } },
+            'vars/set': { title: 'Задать', pins: { value: 'значение' } },
+            'vars/get': { title: 'Получить', pins: { value: 'значение' } },
             'debug/print': { title: 'Вывод', pins: { message: 'сообщение' } },
         },
     } as NodeTexts,

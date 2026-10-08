@@ -1,3 +1,4 @@
+import { pinOf } from './pins';
 import type { Registry } from './registry';
 import type { Graph, PinDef, PinRef } from './types';
 
@@ -5,9 +6,15 @@ export type CheckResult = { ok: true } | { ok: false; reason: string };
 
 const fail = (reason: string): CheckResult => ({ ok: false, reason });
 
+/**
+ * Можно ли вести связь из выхода типа `out` во вход типа `inp`.
+ * `any` совместим со всем; `int → float` разрешён (расширение без потерь), обратно нельзя:
+ * дробную часть молча терять не стоит, для этого нужна явная конвертация.
+ */
 export function typesCompatible(out: PinDef, inp: PinDef): boolean {
     if (out.kind === 'exec' || inp.kind === 'exec') return out.kind === inp.kind;
-    return out.type === 'any' || inp.type === 'any' || out.type === inp.type;
+    if (out.type === 'any' || inp.type === 'any' || out.type === inp.type) return true;
+    return out.type === 'int' && inp.type === 'float';
 }
 
 /** Достижим ли узел `target` из `start`, если идти только по data-связям вперёд. */
@@ -21,9 +28,8 @@ function reachesByData(graph: Graph, registry: Registry, start: string, target: 
         if (seen.has(id)) continue;
         seen.add(id);
 
-        const def = registry.get(graph.nodes[id]!.type);
         for (const c of graph.connections) {
-            if (c.from.node === id && def.outputs[c.from.pin]?.kind === 'data') stack.push(c.to.node);
+            if (c.from.node === id && pinOf(registry, graph, c.from, 'out')?.kind === 'data') stack.push(c.to.node);
         }
     }
     return false;
@@ -36,8 +42,8 @@ export function canConnect(graph: Graph, registry: Registry, from: PinRef, to: P
     if (!fromNode || !toNode) return fail('Нода не найдена');
     if (fromNode.id === toNode.id) return fail('Нельзя соединить ноду с самой собой');
 
-    const outPin = registry.get(fromNode.type).outputs[from.pin];
-    const inPin = registry.get(toNode.type).inputs[to.pin];
+    const outPin = pinOf(registry, graph, from, 'out');
+    const inPin = pinOf(registry, graph, to, 'in');
     if (!outPin) return fail(`У ноды "${fromNode.type}" нет выхода "${from.pin}"`);
     if (!inPin) return fail(`У ноды "${toNode.type}" нет входа "${to.pin}"`);
 
@@ -72,4 +78,20 @@ export function validateGraph(graph: Graph, registry: Registry): string[] {
     }
 
     return errors;
+}
+
+/**
+ * Удаляет связи, которые перестали быть допустимыми (например, после смены типа переменной).
+ * Возвращает, сколько связей удалено.
+ */
+export function pruneInvalidConnections(graph: Graph, registry: Registry): number {
+    const before = graph.connections.length;
+    const all = graph.connections;
+
+    graph.connections = all.filter((c) => {
+        const rest = { ...graph, connections: all.filter((x) => x !== c) };
+        return canConnect(rest, registry, c.from, c.to).ok;
+    });
+
+    return before - graph.connections.length;
 }
