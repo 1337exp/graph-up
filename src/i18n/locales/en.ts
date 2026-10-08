@@ -19,6 +19,7 @@ export default {
         stopped: '■ Stopped',
         noStart: '✖ The graph has no Start node',
         limit: '✖ Step limit exceeded ({0})',
+        depth: '✖ Nesting too deep ({0})',
         nodeNotFound: '✖ Node "{0}" not found',
         dataCycle: '✖ Data cycle',
         nodeError: '✖ Node error: {0}',

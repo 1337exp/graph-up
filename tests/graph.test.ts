@@ -15,7 +15,16 @@ function setup() {
 describe('реестр', () => {
     it('подхватывает ноды из файлов', () => {
         const ids = registry.all().map((d) => d.id).sort();
-        expect(ids).toEqual(['debug/print', 'flow/branch', 'flow/start', 'math/add', 'math/greater']);
+        expect(ids).toEqual([
+            'debug/print',
+            'flow/branch',
+            'flow/for-loop',
+            'flow/start',
+            'math/add',
+            'math/greater',
+            'vars/get',
+            'vars/set',
+        ]);
     });
 });
 

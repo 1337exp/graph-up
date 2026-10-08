@@ -57,6 +57,7 @@ describe('run store', () => {
     it('без Start пишет ошибку', async () => {
         const editor = useEditor();
         delete editor.graph.nodes['start'];
+        delete editor.graph.nodes['start2'];
         const run = useRun();
         await run.run();
         expect(run.lines.at(-1)).toMatchObject({ kind: 'error' });

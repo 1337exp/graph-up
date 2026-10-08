@@ -51,6 +51,25 @@ function createDemo(registry: ReturnType<typeof createDefaultRegistry>) {
     connect(g, registry, { node: 'gt', pin: 'result' }, { node: 'branch', pin: 'condition' });
     connect(g, registry, { node: 'branch', pin: 'then' }, { node: 'yes', pin: 'in' });
     connect(g, registry, { node: 'branch', pin: 'else' }, { node: 'no', pin: 'in' });
+
+    // Вторая программа (запускается, если выделить её Start): sum = 1 + 2 + 3 + 4 + 5
+    add('flow/start', 'start2', 40, 460);
+    add('vars/set', 'init', 200, 460, { name: 'sum', value: 0 });
+    add('flow/for-loop', 'loop', 420, 460, { first: 1, last: 5 });
+    add('vars/set', 'accumulate', 880, 460, { name: 'sum' });
+    add('vars/get', 'read', 440, 640, { name: 'sum' });
+    add('math/add', 'plus', 660, 600);
+    add('debug/print', 'result', 880, 720);
+    add('vars/get', 'readResult', 640, 800, { name: 'sum' });
+
+    connect(g, registry, { node: 'start2', pin: 'out' }, { node: 'init', pin: 'in' });
+    connect(g, registry, { node: 'init', pin: 'out' }, { node: 'loop', pin: 'in' });
+    connect(g, registry, { node: 'loop', pin: 'body' }, { node: 'accumulate', pin: 'in' });
+    connect(g, registry, { node: 'loop', pin: 'completed' }, { node: 'result', pin: 'in' });
+    connect(g, registry, { node: 'read', pin: 'value' }, { node: 'plus', pin: 'a' });
+    connect(g, registry, { node: 'loop', pin: 'index' }, { node: 'plus', pin: 'b' });
+    connect(g, registry, { node: 'plus', pin: 'result' }, { node: 'accumulate', pin: 'value' });
+    connect(g, registry, { node: 'readResult', pin: 'value' }, { node: 'result', pin: 'message' });
     return g;
 }
 

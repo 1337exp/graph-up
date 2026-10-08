@@ -22,6 +22,8 @@ function describeError(e: ExecutionError): Pick<Extract<LogLine, { key: MessageK
             return { kind: 'info', key: 'run.stopped' };
         case 'limit':
             return { kind: 'error', key: 'run.limit', args: [e.params.maxSteps ?? ''] };
+        case 'depth':
+            return { kind: 'error', key: 'run.depth', args: [e.params.maxDepth ?? ''] };
         case 'nodeNotFound':
             return { kind: 'error', key: 'run.nodeNotFound', args: [e.params.id ?? ''] };
         case 'dataCycle':
@@ -59,7 +61,9 @@ export const useRun = defineStore('run', () => {
         // Исполняем снимок: правки графа во время запуска не влияют на текущий прогон.
         const snapshot: Graph = JSON.parse(JSON.stringify(editor.graph));
 
-        const start = Object.values(snapshot.nodes).find((n) => n.type === 'flow/start');
+        const starts = Object.values(snapshot.nodes).filter((n) => n.type === 'flow/start');
+        // Если выделен один из Start, запускаем его; иначе первый по порядку.
+        const start = starts.find((n) => editor.selection.has(n.id)) ?? starts[0];
         if (!start) {
             push({ kind: 'error', key: 'run.noStart' });
             return;

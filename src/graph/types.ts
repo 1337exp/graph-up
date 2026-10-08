@@ -37,9 +37,18 @@ export type ExecNames<P extends PinDefs> = {
     [K in keyof P]: P[K] extends ExecPinDef ? K : never;
 }[keyof P] & string;
 
-export interface RunContext {
+export interface RunContext<O extends PinDefs = PinDefs> {
     nodeId: string;
     log(message: string): void;
+    /**
+     * Выполняет цепочку, начинающуюся с exec-выхода `pin`, до конца и возвращается.
+     * Так ноды запускают «тело» (циклы). Если к пину ничего не подключено, ничего не делает.
+     */
+    exec(pin: ExecNames<O>): Promise<void>;
+    /** Публикует значения data-выходов сразу, не дожидаясь конца `run` (нужно, чтобы тело цикла видело индекс). */
+    setOutputs(values: Partial<DataValues<O>>): void;
+    /** Переменные текущего запуска. */
+    vars: Map<string, unknown>;
 }
 
 export interface RunResult<O extends PinDefs> {
@@ -55,7 +64,7 @@ export interface NodeDef<I extends PinDefs = PinDefs, O extends PinDefs = PinDef
     inputs: I;
     outputs: O;
     // Методом, а не свойством-функцией: так NodeDef<конкретный> присваивается NodeDef<общий>.
-    run(inputs: DataValues<I>, ctx: RunContext): RunResult<O> | Promise<RunResult<O>>;
+    run(inputs: DataValues<I>, ctx: RunContext<O>): RunResult<O> | Promise<RunResult<O>>;
 }
 
 export type AnyNodeDef = NodeDef<PinDefs, PinDefs>;
